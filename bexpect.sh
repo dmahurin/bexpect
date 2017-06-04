@@ -149,3 +149,5 @@ expect () {
 	done
 	return 0
 }
+
+if [ "$#" -gt 0 ]; then . "$1"; fi

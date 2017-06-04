@@ -1,6 +1,8 @@
-#!/bin/bash -e
+#!/bin/bash
 # expect(tcl)-like functionality in bash
 # -Don Mahurin
+
+set -e
 
 script_dir="$(dirname "${BASH_SOURCE[0]}")"
 
@@ -11,6 +13,7 @@ exec 7<>/tmp/expect_fifo_in
 exec 8<>/tmp/expect_fifo_out
 
 cleanup () {
+	set +e
 	if [ ! -e /tmp/expect_fifo_out ]; then return; fi
 	kill $(jobs -p)
 	rm /tmp/expect_fifo_in
@@ -25,12 +28,6 @@ expect_out_buffer=
 endtime=
 spawn_id=
 debug=1
-
-abort () {
-	echo expect failed: "$@"
-	echo buffer "$expect_out_buffer"
-	exit 1
-}
 
 exp_internal () {
 	debug="$1"
@@ -80,10 +77,12 @@ exp_continue () {
 exp_next () {
 	if [ $timeout -lt 0 ]; then
 		t=-1
+	elif [ -z "$endtime" ]; then
+		t=0
 	elif (( $SECONDS >= $endtime )); then
 		endtime=
-		[ "$debug" -gt 0 ] && echo -e "bexpect: no match. buffer:'\n$expect_out_buffer'" 1>&2
-		exit 1
+		[ "$debug" -gt 1 ] && echo -e "bexpect: no match. buffer:'\n$expect_out_buffer'" 1>&2
+		return 1
 	else
 		t="$(($endtime-$SECONDS))"
 	fi
@@ -92,7 +91,10 @@ exp_next () {
 
 expect_nowait () {
 	# reset timer if not set
-	if [ -z "$endtime" ]; then exp_continue; fi
+	if [ -z "$endtime" ]; then
+		exp_continue
+		exp_read_ 0
+	fi
 
 	exact=
 	re_match=
@@ -143,6 +145,7 @@ expect () {
 		if expect_nowait "$@"; then
 			return 0
 		fi
-		exp_next
+		exp_next || return 1
 	done
+	return 0
 }

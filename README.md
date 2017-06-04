@@ -30,7 +30,7 @@ expect {
         send "password\r"
     } "yes/no)?" {
         send "yes\r"
-        set timeout -1
+        timeout -1
     } -re . {
         exp_continue
     } timeout {
@@ -56,6 +56,29 @@ while : ; do
 	exp_continue
 	continue
     fi
-    exp_next || exit 1
+    exp_next
 }
+```
+
+tcl-expect
+
+```tcl
+expect_after {
+	"username" {
+		send "root\n"
+		expect "password"
+	}
+	timeout { exit 1 }
+}
+expect "password"
+```
+
+bexpect
+
+```bash
+if ! expect "password"; then
+	expect "username"
+	send "root\n"
+	expect "password"
+fi
 ```

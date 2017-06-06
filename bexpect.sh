@@ -116,7 +116,7 @@ expect_nowait () {
 			endtime=
 			expect_out_before=${BASH_REMATCH[1]}
 			[ "$debug" -gt 1 ] && echo -e "bexpect: before'\n$expect_out_before'" 1>&2
-			expect_out_match=${BASH_REMATCH[2]}
+			expect_out=("${BASH_REMATCH[@]:2}")
 			[ "$debug" -gt 0 ] && echo "bexpect: matched '$expect_out_match'" 1>&2
 			expect_out_buffer=${BASH_REMATCH[3]}
 			return 0
@@ -131,7 +131,7 @@ expect_nowait () {
 			buf_len=${#expect_out_buffer}
 			after_len=${#after}
 			match_len=$(( $buf_len - $after_len - $before_len ))
-			expect_out_match=${expect_out_buffer:$before_len:$match_len}
+			expect_out=( "${expect_out_buffer:$before_len:$match_len}" )
 			[ "$debug" -gt 0 ] && echo "bexpect: matched '$expect_out_match'" 1>&2
 			expect_out_buffer="$after"
 			return 0

@@ -44,7 +44,7 @@ expect {
 bexpect
 
 ```bash
-while : ; do
+while exp_next ; do
     if expect_nowait "password:"; then
         send "password\r"
 	break
@@ -56,7 +56,6 @@ while : ; do
 	exp_continue
 	continue
     fi
-    exp_next
 }
 ```
 

@@ -4,7 +4,7 @@
 
 set -e
 
-script_dir="$(dirname "${BASH_SOURCE[0]}")"
+bexpect_script_dir="$(dirname "${BASH_SOURCE[0]}")"
 
 mkfifo /tmp/expect_fifo_out
 mkfifo /tmp/expect_fifo_in
@@ -27,7 +27,7 @@ timeout=10
 expect_out_buffer=
 endtime=
 spawn_id=
-debug=1
+debug=0
 
 exp_internal () {
 	debug="$1"
@@ -45,24 +45,28 @@ interact () {
 }
 
 spawn () {
-	python "$script_dir"/run.py "$@" <&7 >&8 2>&1 &
+	python "$bexpect_script_dir"/run.py "$@" <&7 >&8 2>&1 &
 	spawn_id="$!"
 }
 
 send () {
 	line="$1"
-#	line="$(echo "${line}" | tr '\r' '\n')"
-	[ "$debug" -gt 0 ] && echo "bexpect: send: '$line'" 1>&2
-	echo -n -e "$1" | tr '\r' '\n' >&7
+	[ -n "$debug" ] && [ "$debug" -gt 0 ] && echo "bexpect: sending \"$line\"" 1>&2
+	echo -n -e "$1" >&7
 }
 
 send_user () {
-	echo -n -e "$1" | tr '\r' '\n'
+	echo -n -e "$1"
 }
 
 exp_read_ () {
 	t="$1"
-	chunk=$(python "$script_dir"/read.py "$t" <&8)
+	if ! chunk="$(python "$bexpect_script_dir"/read.py "$t" <&8 && echo x)"; then
+		echo read failed
+		exit 1
+	fi
+	chunk="${chunk%x}"
+	[ -n "$debug" ] && echo -n "$chunk"
 	expect_out_buffer="$expect_out_buffer$chunk"
 }
 
@@ -75,27 +79,29 @@ exp_continue () {
 }
 
 exp_next () {
-	if [ $timeout -lt 0 ]; then
-		t=-1
-	elif [ -z "$endtime" ]; then
+	if [ -z "$endtime" ]; then
+		# reset timer if not set
 		t=0
+		exp_continue
+	elif [ $endtime -lt 0 ]; then
+		t=-1
 	elif (( $SECONDS >= $endtime )); then
+		if [ "$debug" -gt 1 ] ; then
+			echo
+			echo "bexpect: timeout $timeout" 1>&2
+			echo "bexpect: buffer \"$expect_out_buffer\"" 1>&2
+		fi
 		endtime=
-		[ "$debug" -gt 1 ] && echo -e "bexpect: no match. buffer:'\n$expect_out_buffer'" 1>&2
 		return 1
 	else
 		t="$(($endtime-$SECONDS))"
 	fi
-	exp_read_ "$t"
+	if ! exp_read_ "$t"; then
+		return 1
+	fi
 }
 
 expect_nowait () {
-	# reset timer if not set
-	if [ -z "$endtime" ]; then
-		exp_continue
-		exp_read_ 0
-	fi
-
 	exact=
 	re_match=
 	while [ "$#" -gt 0 ] ; do case "$1" in
@@ -115,9 +121,8 @@ expect_nowait () {
 		if [[ $expect_out_buffer =~ $re ]]; then
 			endtime=
 			expect_out_before=${BASH_REMATCH[1]}
-			[ "$debug" -gt 1 ] && echo -e "bexpect: before'\n$expect_out_before'" 1>&2
 			expect_out=("${BASH_REMATCH[@]:2}")
-			[ "$debug" -gt 0 ] && echo "bexpect: matched '$expect_out_match'" 1>&2
+			[ -n "$debug" ] && [ "$debug" -gt 0 ] && ( echo; echo  "bexpect: match \"${expect_out[0]}\"" 1>&2 )
 			expect_out_buffer=${BASH_REMATCH[3]}
 			return 0
 		fi
@@ -126,28 +131,30 @@ expect_nowait () {
 			endtime=
 			expect_out_before=${expect_out_buffer%%${pattern}*}
 			before_len=${#expect_out_before}
-			[ "$debug" -gt 1 ] && echo -e "bexpect: before'\n$expect_out_before'" 1>&2
 			after=${expect_out_buffer#*${pattern}}
 			buf_len=${#expect_out_buffer}
 			after_len=${#after}
 			match_len=$(( $buf_len - $after_len - $before_len ))
 			expect_out=( "${expect_out_buffer:$before_len:$match_len}" )
-			[ "$debug" -gt 0 ] && echo "bexpect: matched '$expect_out_match'" 1>&2
+			[ -n "$debug" ] && [ "$debug" -gt 0 ] && ( echo ; echo "bexpect: match \"${expect_out[0]}\"" 1>&2 )
 			expect_out_buffer="$after"
 			return 0
 		fi
+	fi
+	if [ "$debug" -gt 0 ] ; then
+		echo
+		echo "bexpect: no match \"$pattern\"" 1>&2
 	fi
 	return 1
 }
 
 expect () {
-	while : ; do
+	while exp_next ; do
 		if expect_nowait "$@"; then
 			return 0
 		fi
-		exp_next || return 1
 	done
-	return 0
+	return 1
 }
 
 if [ "$#" -gt 0 ]; then . "$1"; fi
